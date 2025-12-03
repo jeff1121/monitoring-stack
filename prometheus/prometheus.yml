@@ -1,0 +1,85 @@
+# Prometheus 主配置檔
+global:
+  scrape_interval: 15s          # 預設抓取間隔
+  evaluation_interval: 15s       # 規則評估間隔
+  external_labels:
+    cluster: 'monitoring-stack'
+    replica: 'prometheus-1'      # Thanos 用來去重的標籤
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# 載入告警規則
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自身監控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Alertmanager 監控
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+
+  # Thanos Sidecar 監控
+  - job_name: 'thanos-sidecar'
+    static_configs:
+      - targets: ['thanos-sidecar:10902']
+
+  # Thanos Store 監控
+  - job_name: 'thanos-store'
+    static_configs:
+      - targets: ['thanos-store:10902']
+
+  # Thanos Query 監控
+  - job_name: 'thanos-query'
+    static_configs:
+      - targets: ['thanos-query:10902']
+
+  # Thanos Compact 監控
+  - job_name: 'thanos-compact'
+    static_configs:
+      - targets: ['thanos-compact:10902']
+
+  # MinIO 監控（需要啟用 metrics）
+  - job_name: 'minio'
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ['minio:9000']
+
+  # Grafana 監控
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+
+  # ============================================
+  # 主機硬體監控
+  # ============================================
+
+  # Node Exporter（主機監控 - CPU、記憶體、磁碟、網路等）
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # cAdvisor（容器監控 - 容器 CPU、記憶體、網路等）
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # ============================================
+  # 以下為額外應用監控範例（依需求取消註解）
+  # ============================================
+
+  # 應用程式監控
+  # - job_name: 'my-app'
+  #   static_configs:
+  #     - targets: ['my-app:8080']
+  #   metrics_path: /metrics

@@ -1,0 +1,112 @@
+# Grafana 資料源自動配置
+apiVersion: 1
+
+# 刪除不在此檔案中的資料源（謹慎使用）
+# deleteDatasources:
+#   - name: Old-Datasource
+#     orgId: 1
+
+datasources:
+  # ============================================
+  # Thanos Query（主要資料源 - 長期 + 短期資料）
+  # ============================================
+  - name: Thanos
+    uid: thanos
+    type: prometheus
+    access: proxy
+    url: http://thanos-query:10902
+    isDefault: true
+    editable: false
+    jsonData:
+      # 啟用 Exemplars（如有使用 tracing）
+      # exemplarTraceIdDestinations:
+      #   - name: trace_id
+      #     datasourceUid: tempo
+      # 時間範圍設定
+      timeInterval: 15s
+      # 查詢超時
+      timeout: 60
+      # 啟用增量查詢（大範圍查詢時自動分割）
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: 10m
+    version: 1
+
+  # ============================================
+  # Prometheus（直連 - 用於調試或短期查詢）
+  # ============================================
+  - name: Prometheus-Direct
+    uid: prometheus-direct
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      timeout: 30
+    version: 1
+
+  # ============================================
+  # Alertmanager
+  # ============================================
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    isDefault: false
+    editable: false
+    jsonData:
+      # 實作類型
+      implementation: prometheus
+      # 啟用接收告警功能
+      handleGrafanaManagedAlerts: false
+    version: 1
+
+  # ============================================
+  # 其他資料源範例（依需求取消註解）
+  # ============================================
+
+  # Loki（日誌）
+  # - name: Loki
+  #   type: loki
+  #   access: proxy
+  #   url: http://loki:3100
+  #   isDefault: false
+  #   editable: false
+  #   jsonData:
+  #     maxLines: 1000
+  #   version: 1
+
+  # Tempo（Tracing）
+  # - name: Tempo
+  #   type: tempo
+  #   access: proxy
+  #   url: http://tempo:3200
+  #   isDefault: false
+  #   editable: false
+  #   jsonData:
+  #     tracesToLogs:
+  #       datasourceUid: loki
+  #       tags: ['job', 'instance', 'pod', 'namespace']
+  #       mappedTags: [{ key: 'service.name', value: 'service' }]
+  #       mapTagNamesEnabled: true
+  #       spanStartTimeShift: '-1h'
+  #       spanEndTimeShift: '1h'
+  #       filterByTraceID: true
+  #       filterBySpanID: false
+  #     tracesToMetrics:
+  #       datasourceUid: thanos
+  #       tags: [{ key: 'service.name', value: 'service' }]
+  #       queries:
+  #         - name: 'Request rate'
+  #           query: 'sum(rate(traces_spanmetrics_calls_total{$__tags}[5m]))'
+  #     nodeGraph:
+  #       enabled: true
+  #     serviceMap:
+  #       datasourceUid: thanos
+  #     search:
+  #       hide: false
+  #     lokiSearch:
+  #       datasourceUid: loki
+  #   version: 1

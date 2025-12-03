@@ -1,0 +1,122 @@
+# Alertmanager 配置檔
+global:
+  # 解決超時時間（告警多久沒有更新就視為已解決）
+  resolve_timeout: 5m
+
+  # SMTP 郵件配置（依需求修改）
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alertmanager@example.com'
+  # smtp_auth_username: 'alertmanager@example.com'
+  # smtp_auth_password: 'your-password'
+  # smtp_require_tls: true
+
+  # Slack 配置（依需求修改）
+  # slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+# 告警路由配置
+route:
+  # 預設分組標籤
+  group_by: ['alertname', 'cluster', 'service']
+  
+  # 分組等待時間（收到第一個告警後等待多久再發送）
+  group_wait: 30s
+  
+  # 同一分組告警的發送間隔
+  group_interval: 5m
+  
+  # 重複告警的發送間隔
+  repeat_interval: 4h
+  
+  # 預設接收者
+  receiver: 'default-receiver'
+  
+  # 子路由（依嚴重程度分流）
+  routes:
+    # Critical 告警 - 立即通知
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    # Warning 告警
+    - match:
+        severity: warning
+      receiver: 'warning-receiver'
+      repeat_interval: 4h
+
+    # Thanos 相關告警
+    - match_re:
+        alertname: ^Thanos.*
+      receiver: 'thanos-receiver'
+
+    # MinIO 相關告警
+    - match_re:
+        alertname: ^Minio.*
+      receiver: 'minio-receiver'
+
+# 抑制規則（避免告警風暴）
+inhibit_rules:
+  # 當有 critical 告警時，抑制同一服務的 warning 告警
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
+
+  # 當服務下線時，抑制該服務的其他告警
+  - source_match:
+      alertname: 'ServiceDown'
+    target_match_re:
+      alertname: '.+'
+    equal: ['job', 'instance']
+
+# 接收者配置
+receivers:
+  # 預設接收者（Webhook 範例）
+  - name: 'default-receiver'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook'
+        send_resolved: true
+    # 可以同時配置多個通知方式
+    # email_configs:
+    #   - to: 'team@example.com'
+
+  # Critical 告警接收者
+  - name: 'critical-receiver'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook/critical'
+        send_resolved: true
+    # slack_configs:
+    #   - channel: '#alerts-critical'
+    #     send_resolved: true
+    #     title: '🚨 Critical Alert'
+    #     text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+    # pagerduty_configs:
+    #   - service_key: 'your-pagerduty-service-key'
+
+  # Warning 告警接收者
+  - name: 'warning-receiver'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook/warning'
+        send_resolved: true
+    # slack_configs:
+    #   - channel: '#alerts-warning'
+    #     send_resolved: true
+
+  # Thanos 專用接收者
+  - name: 'thanos-receiver'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook/thanos'
+        send_resolved: true
+
+  # MinIO 專用接收者
+  - name: 'minio-receiver'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook/minio'
+        send_resolved: true
+
+# 告警模板（可選）
+# templates:
+#   - '/etc/alertmanager/templates/*.tmpl'

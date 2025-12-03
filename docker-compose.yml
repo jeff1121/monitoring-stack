@@ -1,0 +1,206 @@
+version: "3.9"
+
+services:
+  ####################################################
+  # Prometheus（短期存放 + Scrape 所有監控點）
+  ####################################################
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"      # Prometheus 自己只保留短期資料
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  ####################################################
+  # Thanos Sidecar（掛在 Prometheus 旁邊）
+  ####################################################
+  thanos-sidecar:
+    image: quay.io/thanos/thanos:v0.36.1
+    container_name: thanos-sidecar
+    command:
+      - "sidecar"
+      - "--prometheus.url=http://prometheus:9090"
+      - "--tsdb.path=/prometheus"
+      - "--objstore.config-file=/etc/thanos/bucket.yml"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml:ro
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - minio
+    restart: unless-stopped
+
+  ####################################################
+  # Thanos Store（長期資料存取）
+  ####################################################
+  thanos-store:
+    image: quay.io/thanos/thanos:v0.36.1
+    container_name: thanos-store
+    command:
+      - "store"
+      - "--objstore.config-file=/etc/thanos/bucket.yml"
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml:ro
+    networks:
+      - monitoring
+    depends_on:
+      - minio
+    restart: unless-stopped
+
+  ####################################################
+  # Thanos Compactor（壓縮 / 優化歷史資料）
+  ####################################################
+  thanos-compact:
+    image: quay.io/thanos/thanos:v0.36.1
+    container_name: thanos-compact
+    command:
+      - "compact"
+      - "--objstore.config-file=/etc/thanos/bucket.yml"
+      - "--retention.resolution-raw=30d"       # 原始資料保留 30 天（依需求調整）
+      - "--retention.resolution-5m=180d"      # 5 分鐘 resolution 保留 180 天
+      - "--retention.resolution-1h=365d"      # 1 小時 resolution 保留 1 年
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml:ro
+    networks:
+      - monitoring
+    depends_on:
+      - minio
+    restart: unless-stopped
+
+  ####################################################
+  # Thanos Query（Grafana 指向這裡查整個集群）
+  ####################################################
+  thanos-query:
+    image: quay.io/thanos/thanos:v0.36.1
+    container_name: thanos-query
+    command:
+      - "query"
+      - "--store=thanos-sidecar:10901"
+      - "--store=thanos-store:10901"
+      - "--web.listen-address=0.0.0.0:10902"
+      - "--query.replica-label=replica"
+    ports:
+      - "10902:10902"      # Thanos Query UI / Prometheus-compatible API
+    networks:
+      - monitoring
+    depends_on:
+      - thanos-sidecar
+      - thanos-store
+    restart: unless-stopped
+
+  ####################################################
+  # MinIO（當作 S3 儲存 Thanos block）
+  ####################################################
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=admin12345
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  ####################################################
+  # Alertmanager（告警）
+  ####################################################
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  ####################################################
+  # Grafana（畫圖）
+  ####################################################
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - thanos-query
+    restart: unless-stopped
+
+  ####################################################
+  # Node Exporter（主機硬體監控）
+  ####################################################
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  ####################################################
+  # cAdvisor（容器監控）
+  ####################################################
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+# allow attach this stack to a custom network
+# encrypted communication between services is recommended in production
+networks:
+  monitoring:
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  minio_data:

@@ -1,0 +1,65 @@
+# Thanos Object Storage 配置
+# 使用 MinIO 作為 S3 相容儲存
+
+type: S3
+config:
+  # MinIO S3 端點
+  endpoint: minio:9000
+  
+  # Bucket 名稱（需要先在 MinIO 中創建）
+  bucket: thanos
+  
+  # 存取憑證（與 docker-compose.yml 中的 MinIO 配置一致）
+  access_key: admin
+  secret_key: admin12345
+  
+  # 使用 HTTP（MinIO 本地環境）
+  insecure: true
+  
+  # 簽名版本
+  signature_version2: false
+  
+  # 啟用 Server-Side Encryption（可選）
+  # sse_config:
+  #   type: SSE-S3
+
+  # 其他進階配置
+  # part_size: 134217728  # 分片大小 (128MB)
+  # max_retries: 10       # 最大重試次數
+
+# ============================================
+# 其他儲存後端範例
+# ============================================
+
+# AWS S3
+# type: S3
+# config:
+#   bucket: your-thanos-bucket
+#   endpoint: s3.amazonaws.com
+#   region: us-east-1
+#   access_key: YOUR_ACCESS_KEY
+#   secret_key: YOUR_SECRET_KEY
+
+# Google Cloud Storage
+# type: GCS
+# config:
+#   bucket: your-thanos-bucket
+#   service_account: |
+#     {
+#       "type": "service_account",
+#       "project_id": "your-project",
+#       ...
+#     }
+
+# Azure Blob Storage
+# type: AZURE
+# config:
+#   storage_account: your-storage-account
+#   storage_account_key: YOUR_STORAGE_KEY
+#   container: thanos
+#   endpoint: blob.core.windows.net
+
+# 本地檔案系統（僅供測試）
+# type: FILESYSTEM
+# config:
+#   directory: /data/thanos

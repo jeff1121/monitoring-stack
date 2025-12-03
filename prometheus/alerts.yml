@@ -1,0 +1,329 @@
+# Prometheus 告警規則
+groups:
+  # ============================================
+  # 基礎設施告警
+  # ============================================
+  - name: infrastructure
+    rules:
+      # 服務下線告警
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服務 {{ $labels.job }} 已下線"
+          description: "{{ $labels.instance }} 的 {{ $labels.job }} 服務已經下線超過 1 分鐘。"
+
+      # Prometheus 配置重載失敗
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus 配置重載失敗"
+          description: "Prometheus 配置重載失敗，請檢查配置檔案。"
+
+      # Prometheus TSDB 壓縮失敗
+      - alert: PrometheusTsdbCompactionsFailed
+        expr: increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus TSDB 壓縮失敗"
+          description: "Prometheus TSDB 在過去 1 小時內有壓縮失敗。"
+
+  # ============================================
+  # Thanos 告警
+  # ============================================
+  - name: thanos
+    rules:
+      # Thanos Sidecar 無法連接 Prometheus
+      - alert: ThanosSidecarPrometheusDown
+        expr: thanos_sidecar_prometheus_up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Thanos Sidecar 無法連接 Prometheus"
+          description: "Thanos Sidecar 無法連接到 Prometheus 超過 5 分鐘。"
+
+      # Thanos Compactor 停止運行
+      - alert: ThanosCompactHalted
+        expr: thanos_compact_halted == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Thanos Compactor 已停止"
+          description: "Thanos Compactor 已停止運行，可能是因為遇到錯誤。"
+
+      # Thanos Store 錯誤率過高
+      - alert: ThanosStoreGrpcErrorRate
+        expr: |
+          (
+            sum(rate(grpc_server_handled_total{grpc_code=~"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded", job="thanos-store"}[5m]))
+          /
+            sum(rate(grpc_server_started_total{job="thanos-store"}[5m]))
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Thanos Store gRPC 錯誤率過高"
+          description: "Thanos Store gRPC 錯誤率超過 5%。"
+
+      # Thanos Query 延遲過高
+      - alert: ThanosQueryHighLatency
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="thanos-query"}[5m])) by (le)) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Thanos Query 延遲過高"
+          description: "Thanos Query 99th 百分位延遲超過 10 秒。"
+
+  # ============================================
+  # MinIO 告警
+  # ============================================
+  - name: minio
+    rules:
+      # MinIO 磁碟空間不足
+      - alert: MinioDiskSpaceLow
+        expr: minio_cluster_capacity_usable_free_bytes / minio_cluster_capacity_usable_total_bytes * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO 可用空間不足"
+          description: "MinIO 可用磁碟空間低於 10%。"
+
+      # MinIO 離線
+      - alert: MinioOffline
+        expr: minio_cluster_nodes_offline_total > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO 節點離線"
+          description: "有 {{ $value }} 個 MinIO 節點離線。"
+
+  # ============================================
+  # Grafana 告警
+  # ============================================
+  - name: grafana
+    rules:
+      # Grafana 健康檢查失敗
+      - alert: GrafanaDown
+        expr: up{job="grafana"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Grafana 服務下線"
+          description: "Grafana 服務已下線超過 1 分鐘。"
+
+  # ============================================
+  # Alertmanager 告警
+  # ============================================
+  - name: alertmanager
+    rules:
+      # Alertmanager 配置不同步
+      - alert: AlertmanagerConfigInconsistent
+        expr: count(count_values("config_hash", alertmanager_config_hash)) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alertmanager 配置不一致"
+          description: "Alertmanager 集群中存在配置不一致的情況。"
+
+      # Alertmanager 集群失敗
+      - alert: AlertmanagerClusterFailed
+        expr: alertmanager_cluster_health_status == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager 集群故障"
+          description: "Alertmanager 集群健康狀態異常。"
+
+  # ============================================
+  # 主機硬體告警（Node Exporter）
+  # ============================================
+  - name: node-exporter
+    rules:
+      # CPU 使用率過高
+      - alert: HostHighCpuLoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機 CPU 使用率過高"
+          description: "主機 {{ $labels.instance }} CPU 使用率超過 80%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      - alert: HostCriticalCpuLoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "主機 CPU 使用率嚴重過高"
+          description: "主機 {{ $labels.instance }} CPU 使用率超過 95%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 記憶體使用率過高
+      - alert: HostHighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機記憶體使用率過高"
+          description: "主機 {{ $labels.instance }} 記憶體使用率超過 80%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      - alert: HostCriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "主機記憶體使用率嚴重過高"
+          description: "主機 {{ $labels.instance }} 記憶體使用率超過 95%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 磁碟空間不足
+      - alert: HostDiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機磁碟空間不足"
+          description: "主機 {{ $labels.instance }} 磁碟 {{ $labels.mountpoint }} 可用空間低於 20%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      - alert: HostDiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "主機磁碟空間嚴重不足"
+          description: "主機 {{ $labels.instance }} 磁碟 {{ $labels.mountpoint }} 可用空間低於 10%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 磁碟 I/O 使用率過高
+      - alert: HostHighDiskIOUtilization
+        expr: rate(node_disk_io_time_seconds_total[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機磁碟 I/O 使用率過高"
+          description: "主機 {{ $labels.instance }} 磁碟 {{ $labels.device }} I/O 使用率超過 80%。"
+
+      # 網路流量異常
+      - alert: HostHighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]) / 1024 / 1024 > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機網路接收流量過高"
+          description: "主機 {{ $labels.instance }} 網卡 {{ $labels.device }} 接收流量超過 100 MB/s。"
+
+      # 系統負載過高
+      - alert: HostHighSystemLoad
+        expr: node_load15 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機系統負載過高"
+          description: "主機 {{ $labels.instance }} 15 分鐘系統負載超過 CPU 核心數的 2 倍。"
+
+      # 文件描述符使用率過高
+      - alert: HostFileDescriptorsUsageHigh
+        expr: node_filefd_allocated / node_filefd_maximum * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機文件描述符使用率過高"
+          description: "主機 {{ $labels.instance }} 文件描述符使用率超過 80%。"
+
+      # 系統時間偏移
+      - alert: HostClockSkew
+        expr: abs(node_timex_offset_seconds) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主機系統時間偏移"
+          description: "主機 {{ $labels.instance }} 系統時間偏移超過 50ms。"
+
+  # ============================================
+  # 容器告警（cAdvisor）
+  # ============================================
+  - name: cadvisor
+    rules:
+      # 容器 CPU 使用率過高
+      - alert: ContainerHighCpuUsage
+        expr: (sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (name) / sum(container_spec_cpu_quota{name!=""} / container_spec_cpu_period{name!=""}) by (name)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器 CPU 使用率過高"
+          description: "容器 {{ $labels.name }} CPU 使用率超過 80%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 容器記憶體使用率過高
+      - alert: ContainerHighMemoryUsage
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器記憶體使用率過高"
+          description: "容器 {{ $labels.name }} 記憶體使用率超過 80%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 容器記憶體使用率嚴重過高
+      - alert: ContainerCriticalMemoryUsage
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "容器記憶體使用率嚴重過高"
+          description: "容器 {{ $labels.name }} 記憶體使用率超過 95%（目前：{{ $value | printf \"%.2f\" }}%）。"
+
+      # 容器重啟過於頻繁
+      - alert: ContainerFrequentRestart
+        expr: increase(container_last_seen{name!=""}[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器重啟過於頻繁"
+          description: "容器 {{ $labels.name }} 在過去 1 小時內重啟超過 5 次。"
+
+      # 容器網路錯誤
+      - alert: ContainerNetworkErrors
+        expr: rate(container_network_receive_errors_total{name!=""}[5m]) > 0 or rate(container_network_transmit_errors_total{name!=""}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器網路錯誤"
+          description: "容器 {{ $labels.name }} 存在網路錯誤。"
+
+      # 容器磁碟寫入過高
+      - alert: ContainerHighDiskWrite
+        expr: rate(container_fs_writes_bytes_total{name!=""}[5m]) / 1024 / 1024 > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器磁碟寫入過高"
+          description: "容器 {{ $labels.name }} 磁碟寫入速率超過 50 MB/s。"
