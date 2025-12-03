@@ -11,6 +11,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=2d"      # Prometheus 自己只保留短期資料
+      - "--storage.tsdb.min-block-duration=2h"  # 與 max 設為一致以禁用內建壓縮，交由 Thanos Compact
+      - "--storage.tsdb.max-block-duration=2h"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -49,8 +51,10 @@ services:
     command:
       - "store"
       - "--objstore.config-file=/etc/thanos/bucket.yml"
+      - "--data-dir=/var/thanos/store"
     volumes:
       - ./thanos/bucket.yml:/etc/thanos/bucket.yml:ro
+      - thanos_store_data:/var/thanos/store
     networks:
       - monitoring
     depends_on:
@@ -69,8 +73,10 @@ services:
       - "--retention.resolution-raw=30d"       # 原始資料保留 30 天（依需求調整）
       - "--retention.resolution-5m=180d"      # 5 分鐘 resolution 保留 180 天
       - "--retention.resolution-1h=365d"      # 1 小時 resolution 保留 1 年
+      - "--data-dir=/var/thanos/compact"
     volumes:
       - ./thanos/bucket.yml:/etc/thanos/bucket.yml:ro
+      - thanos_compact_data:/var/thanos/compact
     networks:
       - monitoring
     depends_on:
@@ -87,7 +93,7 @@ services:
       - "query"
       - "--store=thanos-sidecar:10901"
       - "--store=thanos-store:10901"
-      - "--web.listen-address=0.0.0.0:10902"
+      - "--http-address=0.0.0.0:10902"
       - "--query.replica-label=replica"
     ports:
       - "10902:10902"      # Thanos Query UI / Prometheus-compatible API
@@ -204,3 +210,5 @@ volumes:
   prometheus_data:
   grafana_data:
   minio_data:
+  thanos_store_data:
+  thanos_compact_data:
