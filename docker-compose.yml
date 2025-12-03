@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ####################################################
   # Prometheus（短期存放 + Scrape 所有監控點）
@@ -123,7 +121,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - net01
+      - monitoring
     restart: unless-stopped
 
   ####################################################
@@ -139,7 +137,7 @@ services:
     ports:
       - "9093:9093"
     networks:
-      - net01
+      - monitoring
     restart: unless-stopped
 
   ####################################################
@@ -159,7 +157,7 @@ services:
     ports:
       - "3000:3000"
     networks:
-      - net01
+      - monitoring
     depends_on:
       - thanos-query
     restart: unless-stopped
@@ -182,7 +180,7 @@ services:
     ports:
       - "9100:9100"
     networks:
-      - net01
+      - monitoring
     restart: unless-stopped
 
   ####################################################
@@ -201,13 +199,13 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - net01
+      - monitoring
     restart: unless-stopped
 
 # allow attach this stack to a custom network
 # encrypted communication between services is recommended in production
 networks:
-  net01:
+  monitoring:
     name: net01
     driver: bridge
 
