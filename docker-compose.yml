@@ -27,6 +27,7 @@ services:
   thanos-sidecar:
     image: quay.io/thanos/thanos:v0.36.1
     container_name: thanos-sidecar
+    user: "0"
     command:
       - "sidecar"
       - "--prometheus.url=http://prometheus:9090"
@@ -48,6 +49,7 @@ services:
   thanos-store:
     image: quay.io/thanos/thanos:v0.36.1
     container_name: thanos-store
+    user: "0"
     command:
       - "store"
       - "--objstore.config-file=/etc/thanos/bucket.yml"
@@ -67,6 +69,7 @@ services:
   thanos-compact:
     image: quay.io/thanos/thanos:v0.36.1
     container_name: thanos-compact
+    user: "0"
     command:
       - "compact"
       - "--objstore.config-file=/etc/thanos/bucket.yml"
