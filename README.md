@@ -46,10 +46,13 @@ monitoring-stack/
 - Docker 24+ 與 Docker Compose v2
 - 4 GB 以上 RAM（建議），並允許容器掛載主機 `/proc`、`/sys`、`/var/lib/docker` 等路徑
 
+## 環境變數
+將 [.env.template](.env.template) 複製為 [.env](.env) 並設定 MinIO 與 Grafana 憑證，Docker Compose 會自動載入同層 [.env](.env)。範本預設值僅供測試，建議在正式環境改用強密碼並妥善保護檔案權限。
+
 ## 使用方式
-1. 請依照 [quickstart.md](quickstart.md) 完成安裝與啟動。
-2. 初次啟動後須於 MinIO (http://localhost:9001) 建立 `thanos` bucket，或使用 `mc` CLI 指令。
-3. Grafana 介面位於 http://localhost:3000，預設帳密 `admin / admin123`，登入後即可看到「Node Exporter - 主機監控」儀表板。
+1. 請依照 [quickstart.md](quickstart.md) 完成 [.env](.env) 建置與堆疊啟動。
+2. 初次啟動後須於 MinIO (http://localhost:9001) 建立 `thanos` bucket，登入帳密為 [.env](.env) 中的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`，或改用 `mc` CLI 指令。
+3. Grafana 介面位於 http://localhost:3000，使用 [.env](.env) 中的 `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` 登入後即可看到「Node Exporter - 主機監控」儀表板。
 4. 若要新增自訂 exporter 或告警規則，可直接修改對應目錄並重新載入/重啟服務。
 
 ## 延伸調整建議
@@ -58,5 +61,3 @@ monitoring-stack/
 - **告警整合**：更新 `alertmanager.yml` 中的 webhook、Email 或 Slack 設定，對接實際通知渠道。
 - **儀表板與資料源**：依照 Grafana provisioning 架構，加入更多 JSON 儀表板或 datasources。
 
-## 授權
-此專案供示範與教學使用，可自由延伸與修改；如需授權條款，請依您組織政策新增 LICENSE。

@@ -15,25 +15,29 @@ cd monitoring-stack
 ```
 若已複製到本機，請確定目前分支為 `main` 且 `git pull` 為最新狀態。
 
-## 3. 建立必要目錄與權限
-專案已包含所需結構；請確認下列目錄存在並允許 Docker 掛載：
-- `./prometheus`、`./alertmanager`、`./grafana/provisioning`、`./thanos`
-- 目錄 `./data` 供 MinIO 與 Prometheus Volume 使用（若不存在可 `mkdir data`）。
+## 3. 建立 .env
+將 [.env.template](.env.template) 複製為 [.env](.env)，並調整符合需求的憑證：
+```bash
+cp .env.template .env
+```
+- `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`：MinIO Console 及 API 登入
+- `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD`：Grafana 管理員帳密
+- `GF_USERS_ALLOW_SIGN_UP`：是否允許自行註冊（預設 `false`）
 
 ## 4. 啟動堆疊
 ```bash
 docker compose up -d
 ```
-第一次啟動會自動抓取所有映像，所需時間依網路而定。可用 `docker compose ps` 確認所有服務皆為 `running`。
+第一次啟動會自動抓取所有映像及建立 named volumes，所需時間依網路而定。可用 `docker compose ps` 確認所有服務皆為 `running`。
 
 ## 5. 初始化 MinIO Bucket
 Thanos 需要名為 `thanos` 的 bucket：
-1. 開啟 <http://localhost:9001>，登入帳密：`admin / admin12345`。
+1. 開啟 <http://localhost:9001>，登入帳密為 [.env](.env) 中設定（若沿用範本則為 `admin / change-me`）。
 2. 使用 Console 新增 bucket，名稱輸入 `thanos`。
 
 或透過 `mc` CLI：
 ```bash
-mc alias set myminio http://localhost:9000 admin admin12345
+mc alias set myminio http://localhost:9000 <MINIO_ROOT_USER> <MINIO_ROOT_PASSWORD>
 mc mb myminio/thanos
 ```
 
@@ -42,7 +46,7 @@ mc mb myminio/thanos
 |------|----------|
 | Prometheus | <http://localhost:9090> → Status ▸ Targets，確認 `UP` |
 | Thanos Query | <http://localhost:10902> → 嘗試 `up` 查詢 |
-| Grafana | <http://localhost:3000> → 帳密 `admin / admin123`，首次登入建議修改密碼 |
+| Grafana | <http://localhost:3000> → 帳密為 [.env](.env) 中設定（範本預設 `admin / change-me`），首次登入請立即更換 |
 | Alertmanager | <http://localhost:9093> |
 | Node Exporter | <http://localhost:9100/metrics> |
 | cAdvisor | <http://localhost:8080> |
